@@ -1,0 +1,15 @@
+nodes_to_track:
+    - perception
+    - planning
+    - example1
+
+# TODO: once we can take a list
+#external_monitors:
+#    - type: "Example1NodeMonitor"
+#      divider: 10
+#      mod: 2
+
+external_monitors:
+    type: "Example1NodeMonitor"
+    divider: 10
+    mod: 2
