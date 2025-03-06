@@ -17,6 +17,7 @@ class NodeInfo:
     node_name: str
     status: Status
     notes: str
+    required: bool = True
 
     @classmethod
     def from_ros(cls, msg):

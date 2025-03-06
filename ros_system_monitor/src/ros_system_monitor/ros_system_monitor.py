@@ -54,7 +54,10 @@ def info_to_row(info: TrackedNodeInfo):
         Status.STARTUP: "yellow",
     }
 
-    color = status_to_color[status]
+    if status == Status.NO_HB and info.required:
+        color = "red"
+    else:
+        color = status_to_color[status]
 
     row = (c1, c2, c3, c4, c5)
     return tuple(map(lambda x: f"[{color}]{x}[/{color}]", row))
