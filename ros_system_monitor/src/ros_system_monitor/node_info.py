@@ -2,12 +2,14 @@ from dataclasses import dataclass
 from enum import Enum
 from ros_system_monitor_msgs.msg import NodeInfoMsg
 
+
 class Status(Enum):
     NOMINAL = 1
     WARNING = 2
     ERROR = 3
     NO_HB = 4
     STARTUP = 5
+
 
 @dataclass
 class NodeInfo:
@@ -18,7 +20,12 @@ class NodeInfo:
 
     @classmethod
     def from_ros(cls, msg):
-        return cls(nickname=msg.nickname, node_name=msg.node_name, status=Status(msg.status), notes=msg.notes)
+        return cls(
+            nickname=msg.nickname,
+            node_name=msg.node_name,
+            status=Status(msg.status),
+            notes=msg.notes,
+        )
 
     def to_ros(self):
         msg = NodeInfoMsg()
