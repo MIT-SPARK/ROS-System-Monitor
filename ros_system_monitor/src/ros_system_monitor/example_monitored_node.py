@@ -17,15 +17,17 @@ class ExampleMonitoredNode(Node):
             type=Parameter.Type.STRING.value,
             description="Nodes to track",
         )
-        self.declare_parameter("nickname", descriptor=nickname_d)
+        self.declare_parameter("nickname", "", descriptor=nickname_d)
         self.nickname = self.get_parameter("nickname").value
+        assert self.nickname != "", "nickname param required."
 
         status_d = ParameterDescriptor(
             type=Parameter.Type.STRING.value,
             description="Nodes to track",
         )
-        self.declare_parameter("status", descriptor=status_d)
+        self.declare_parameter("status", "",  descriptor=status_d)
         status_str = self.get_parameter("status").value
+        assert status_str != "", "status param required."
 
         if status_str == "NOMINAL":
             self.status = Status.NOMINAL
@@ -40,7 +42,7 @@ class ExampleMonitoredNode(Node):
             type=Parameter.Type.STRING.value,
             description="Notes to publish",
         )
-        self.declare_parameter("notes", descriptor=notes_d)
+        self.declare_parameter("notes", "", descriptor=notes_d)
         self.notes = self.get_parameter("notes").value
 
         self.publisher = self.create_publisher(NodeInfoMsg, "~/node_status", 1)
