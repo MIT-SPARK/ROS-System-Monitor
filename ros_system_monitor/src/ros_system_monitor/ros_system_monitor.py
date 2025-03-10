@@ -13,7 +13,7 @@ from ros_system_monitor.node_info import Status, NodeInfo
 import threading
 
 from spark_config import Config, discover_plugins, config_field
-from typing import List
+from typing import List, Optional
 
 import argparse
 
@@ -21,9 +21,27 @@ CLEAN_TABLE_PRINTS = True
 
 
 @dataclass
+class TrackedNodeConfig(Config):
+    nickname: str = ""
+    external_monitor: Any = config_field("external_monitor", required=False)
+    required: bool = True
+
+
+@dataclass
 class TrackedNodeInfo:
     node_info: NodeInfo
-    last_heartbeat: int
+    last_heartbeat: Optional[int] = None
+    external_monitor: Optional[Any] = None
+    required: bool = True
+
+    @classmethod
+    def from_config(cls, config: TrackedNodeConfig):
+        """Construct the tracking information for the node from a config."""
+        return cls(
+            NodeInfo(config.nickname),
+            external_monitor=config.external_monitor.create(),
+            required=config.required,
+        )
 
 
 @dataclass
@@ -38,12 +56,16 @@ def info_to_row(info: TrackedNodeInfo):
     c4 = info.node_info.notes
 
     t_now = time.time()
-    dt = t_now - info.last_heartbeat / 1e9
-    c5 = dt
+    if info.last_heartbeat is not None:
+        dt = t_now - info.last_heartbeat / 1e9
+        c5 = dt
+    else:
+        dt = None
+        c5 = "???"
 
     max_heartbeat_interval = 10
     status = info.node_info.status
-    if dt > max_heartbeat_interval:
+    if dt is None or dt > max_heartbeat_interval:
         status = Status.NO_HB
 
     status_to_color = {
@@ -87,9 +109,7 @@ def print_table(console, table: Table):
 
 @dataclass
 class SystemMonitorConfig(Config):
-    nodes_to_track: List[str] = field(default_factory=lambda: [])
-    external_monitors: Any = config_field("external_monitor")
-    # external_monitors: list = field(default_factory=lambda: [])
+    nodes_to_track: List[TrackedNodeConfig] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: str):
@@ -102,26 +122,27 @@ class SystemMonitor(Node):
 
         self.console = Console()
         self.info_lock = threading.Lock()
-        self.external_info_subscribers = []
 
         discover_plugins("rsm_")
         # plugins = discover_plugins("rsm_")
         # self.get_logger().info(f"plugins: {plugins}")
+
         self.config = SystemMonitorConfig.load(config_path)
+        for c in self.config.nodes_to_track:
+            if c.nickname == "":
+                self.get_logger().error(f"Unnamed node diagnostics: '{c}'")
+                sys.exit(1)
 
-        tracked_infos = {}
-        for n in self.config.nodes_to_track:
-            info = NodeInfo(
-                nickname=n, node_name="???", status=Status.NO_HB, notes="Not yet seen"
-            )
-            tracked_info = TrackedNodeInfo(info, 0)
-            tracked_infos[n] = tracked_info
-        self.diagnostics = DiagnosticTable(tracked_infos)
+        self.diagnostics = DiagnosticTable(
+            {
+                c.nickname: TrackedNodeInfo.from_config(c)
+                for c in self.config.nodes_to_track
+            }
+        )
 
-        # self.external_monitors = [m.create() for m in self.config.external_monitors]
-        self.external_monitors = [self.config.external_monitors.create()]
-        for e in self.external_monitors:
-            e.register_callbacks(self)
+        for _, node in self.diagnostics.rows.items():
+            if node.external_monitor is not None:
+                node.external_monitor.register_callbacks(self)
 
         self.subscriber = self.create_subscription(
             NodeInfoMsg, "~/node_diagnostic_collector", self.callback, 10
@@ -134,26 +155,29 @@ class SystemMonitor(Node):
     def timer_callback(self):
         with self.info_lock:
             table = generate_table(self.diagnostics)
+
         print_table(self.console, table)
 
     def callback(self, msg):
         info = NodeInfo.from_ros(msg)
         self.update_node_info(info)
 
-    def add_subscribers(self, subscribers):
-        self.external_info_subscribers += subscribers
+    def add_node_monitors(self, nodes: List[TrackedNodeConfig]):
+        for node in nodes:
+            self.diagnostics.rows[node.nickname] = TrackedNodeInfo.from_config(node)
 
     def update_node_info(self, info):
-        tracked_info = TrackedNodeInfo(info, time.time() * 1e9)
-
+        time_ns = time.time() * 1e9
         with self.info_lock:
             tracked_nodes = self.diagnostics.rows.keys()
-            if info.nickname in tracked_nodes:
-                self.diagnostics.rows[info.nickname] = tracked_info
-            else:
+            if info.nickname not in tracked_nodes:
                 self.get_logger().error(
-                    f"Received diagnostics from untracked node: {info.nickname} ({info.node_name})"
+                    f"Received untracked node diagnostics: '{info.nickname}' ('{info.node_name}')"
                 )
+                return
+
+            self.diagnostics.rows[info.nickname].node_info = info
+            self.diagnostics.rows[info.nickname].last_heartbeat = time_ns
 
 
 def main(args=None):

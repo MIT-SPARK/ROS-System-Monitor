@@ -14,10 +14,9 @@ class Status(Enum):
 @dataclass
 class NodeInfo:
     nickname: str
-    node_name: str
-    status: Status
-    notes: str
-    required: bool = True
+    node_name: str = "???"
+    status: Status = Status.NO_HB
+    notes: str = "Not yet seen"
 
     @classmethod
     def from_ros(cls, msg):
