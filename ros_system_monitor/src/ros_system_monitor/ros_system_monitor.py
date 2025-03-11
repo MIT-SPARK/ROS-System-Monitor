@@ -30,15 +30,16 @@ class TrackedNodeConfig(Config):
 @dataclass
 class TrackedNodeInfo:
     node_info: NodeInfo
-    last_heartbeat: Optional[int] = None
+    last_heartbeat: int
     external_monitor: Optional[Any] = None
     required: bool = True
 
     @classmethod
-    def from_config(cls, config: TrackedNodeConfig):
+    def from_config(cls, config: TrackedNodeConfig, timestamp_ns: int):
         """Construct the tracking information for the node from a config."""
         return cls(
             NodeInfo(config.nickname),
+            timestamp_ns,
             external_monitor=config.external_monitor.create(),
             required=config.required,
         )
@@ -49,24 +50,18 @@ class DiagnosticTable:
     rows: Dict[str, TrackedNodeInfo]
 
 
-def info_to_row(info: TrackedNodeInfo):
+def info_to_row(info: TrackedNodeInfo, max_heartbeat_interval_s: float = 10.0):
     c1 = info.node_info.nickname
     c2 = info.node_info.node_name
     c3 = info.node_info.status
     c4 = info.node_info.notes
 
     t_now = time.time()
-    if info.last_heartbeat is not None:
-        dt = t_now - info.last_heartbeat / 1e9
-        c5 = dt
-    else:
-        dt = None
-        c5 = "???"
+    dt = t_now - info.last_heartbeat / 1e9
+    c5 = rf"{dt:.3f} \[s]"
 
-    max_heartbeat_interval = 10
-    status = info.node_info.status
-    if dt is None or dt > max_heartbeat_interval:
-        status = Status.NO_HB
+    if dt > max_heartbeat_interval_s:
+        info.node_info.status = Status.NO_HB
 
     status_to_color = {
         Status.NOMINAL: "green",
@@ -76,6 +71,7 @@ def info_to_row(info: TrackedNodeInfo):
         Status.STARTUP: "yellow",
     }
 
+    status = info.node_info.status
     if status == Status.NO_HB and info.required:
         color = "red"
     else:
@@ -85,7 +81,7 @@ def info_to_row(info: TrackedNodeInfo):
     return tuple(map(lambda x: f"[{color}]{x}[/{color}]", row))
 
 
-def generate_table(diagnostics: DiagnosticTable):
+def generate_table(diagnostics: DiagnosticTable, max_heartbeat_interval_s):
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Nickname")
     table.add_column("ROS Name")
@@ -96,7 +92,7 @@ def generate_table(diagnostics: DiagnosticTable):
     keys = sorted(diagnostics.rows.keys())
     for k in keys:
         row = diagnostics.rows[k]
-        table.add_row(*info_to_row(row))
+        table.add_row(*info_to_row(row, max_heartbeat_interval_s))
     return table
 
 
@@ -110,6 +106,7 @@ def print_table(console, table: Table):
 @dataclass
 class SystemMonitorConfig(Config):
     nodes_to_track: List[TrackedNodeConfig] = field(default_factory=list)
+    max_heartbeat_interval_s: float = 10.0
 
     @classmethod
     def load(cls, path: str):
@@ -133,9 +130,10 @@ class SystemMonitor(Node):
                 self.get_logger().error(f"Unnamed node diagnostics: '{c}'")
                 sys.exit(1)
 
+        self._start_time_ns = self.get_clock().now().nanoseconds
         self.diagnostics = DiagnosticTable(
             {
-                c.nickname: TrackedNodeInfo.from_config(c)
+                c.nickname: TrackedNodeInfo.from_config(c, self._start_time_ns)
                 for c in self.config.nodes_to_track
             }
         )
@@ -154,7 +152,9 @@ class SystemMonitor(Node):
 
     def timer_callback(self):
         with self.info_lock:
-            table = generate_table(self.diagnostics)
+            table = generate_table(
+                self.diagnostics, self.config.max_heartbeat_interval_s
+            )
 
         print_table(self.console, table)
 
@@ -164,7 +164,9 @@ class SystemMonitor(Node):
 
     def add_node_monitors(self, nodes: List[TrackedNodeConfig]):
         for node in nodes:
-            self.diagnostics.rows[node.nickname] = TrackedNodeInfo.from_config(node)
+            self.diagnostics.rows[node.nickname] = TrackedNodeInfo.from_config(
+                node, self._start_time_ns
+            )
 
     def update_node_info(self, info):
         time_ns = time.time() * 1e9

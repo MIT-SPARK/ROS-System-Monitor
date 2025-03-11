@@ -15,7 +15,7 @@ class Status(Enum):
 class NodeInfo:
     nickname: str
     node_name: str = "???"
-    status: Status = Status.NO_HB
+    status: Status = Status.STARTUP
     notes: str = "Not yet seen"
 
     @classmethod
