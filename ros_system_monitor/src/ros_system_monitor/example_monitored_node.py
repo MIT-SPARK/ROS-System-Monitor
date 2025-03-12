@@ -25,7 +25,7 @@ class ExampleMonitoredNode(Node):
             type=Parameter.Type.STRING.value,
             description="Nodes to track",
         )
-        self.declare_parameter("status", "",  descriptor=status_d)
+        self.declare_parameter("status", "", descriptor=status_d)
         status_str = self.get_parameter("status").value
         assert status_str != "", "status param required."
 
