@@ -1,36 +1,22 @@
+---
 launch:
-
-    - arg:
-        name: "launch_nominal_node"
-        default: "false"
-
-    - arg:
-        name: "launch_warning_node"
-        default: "false"
-
-    - arg:
-        name: "launch_external_node"
-        default: "false"
-
-
-    - node:
-        if: "$(var launch_nominal_node)"
-        pkg: ros_system_monitor
-        exec: example_monitored_node
-        name: nominal_monitored_node
-        param:
-            - from: $(find-pkg-share ros_system_monitor)/config/nominal_monitored_node.yaml
-        remap:
-            - from: ~/node_status
-              to: /ros_system_monitor/node_diagnostic_collector
-
-    - node:
-        if: "$(var launch_warning_node)"
-        pkg: ros_system_monitor
-        exec: example_monitored_node
-        name: warning_monitored_node
-        param:
-            - from: $(find-pkg-share ros_system_monitor)/config/warning_monitored_node.yaml
-        remap:
-            - from: ~/node_status
-              to: /ros_system_monitor/node_diagnostic_collector
+  - arg: {name: launch_nominal_node, default: 'false'}
+  - arg: {name: launch_warning_node, default: 'false'}
+  - node:
+      if: $(var launch_nominal_node)
+      pkg: ros_system_monitor
+      exec: example_monitored_node
+      name: nominal_monitored_node
+      param:
+        - from: $(find-pkg-share ros_system_monitor)/config/nominal_monitored_node.yaml
+      remap:
+        - {from: ~/node_status, to: /ros_system_monitor/node_diagnostic_collector}
+  - node:
+      if: $(var launch_warning_node)
+      pkg: ros_system_monitor
+      exec: example_monitored_node
+      name: warning_monitored_node
+      param:
+        - from: $(find-pkg-share ros_system_monitor)/config/warning_monitored_node.yaml
+      remap:
+        - {from: ~/node_status, to: /ros_system_monitor/node_diagnostic_collector}
