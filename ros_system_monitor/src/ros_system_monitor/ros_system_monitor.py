@@ -14,6 +14,7 @@ from ros_system_monitor.diagnostics import (
     value_to_status,
 )
 import threading
+import functools
 
 from spark_config import Config, discover_plugins
 from typing import Dict
@@ -59,9 +60,11 @@ class SystemMonitor(Node):
             }
         )
 
-        for _, node in self.diagnostics.rows.items():
+        for nickname, node in self.diagnostics.rows.items():
             if node.external_monitor is not None:
-                node.external_monitor.register_callbacks(self)
+                node.external_monitor.set_callback(
+                    self, functools.partial(self.update_node_info, nickname)
+                )
 
         self.subscriber = self.create_subscription(
             NodeInfoMsg, "~/node_diagnostic_collector", self._callback, 10
