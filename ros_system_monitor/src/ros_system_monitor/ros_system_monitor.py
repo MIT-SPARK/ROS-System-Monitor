@@ -14,7 +14,6 @@ from ros_system_monitor.diagnostics import (
     value_to_status,
 )
 import threading
-import functools
 
 from spark_config import Config, discover_plugins
 from typing import Dict
@@ -55,16 +54,19 @@ class SystemMonitor(Node):
         self.config = SystemMonitorConfig.load(config_path)
         self.diagnostics = DiagnosticTable(
             {
-                n: TrackedNodeInfo.from_config(c, self._start_time_ns)
+                n: TrackedNodeInfo.from_config(c, n, self._start_time_ns)
                 for n, c in self.config.nodes_to_track.items()
             }
         )
 
         for nickname, node in self.diagnostics.rows.items():
             if node.external_monitor is not None:
-                node.external_monitor.set_callback(
-                    self, functools.partial(self.update_node_info, nickname)
-                )
+                try:
+                    node.external_monitor.register_monitor(self)
+                except Exception as e:
+                    self.get_logger().error(
+                        f"Failed to register external monitor '{nickname}': {e}"
+                    )
 
         self.subscriber = self.create_subscription(
             NodeInfoMsg, "~/node_diagnostic_collector", self._callback, 10

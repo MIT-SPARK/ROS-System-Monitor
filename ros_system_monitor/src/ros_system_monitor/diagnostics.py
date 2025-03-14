@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+import pathlib
 from typing import Any, Optional, Dict
 import time
 from ros_system_monitor_msgs.msg import NodeInfoMsg
@@ -33,6 +34,11 @@ def value_to_status(status: int) -> Status:
         return Status.ERROR, f"Invalid status value: {status}"
 
 
+def get_monitor_topic(nickname, suffix="status"):
+    """Get joined path for namespaced monitor."""
+    return str(pathlib.Path("~") / nickname / suffix)
+
+
 @dataclass
 class TrackedNodeConfig(sc.Config):
     """
@@ -60,11 +66,11 @@ class TrackedNodeInfo:
     required: bool = True
 
     @classmethod
-    def from_config(cls, config: TrackedNodeConfig, timestamp_ns: int):
+    def from_config(cls, config: TrackedNodeConfig, nickname: str, timestamp_ns: int):
         """Construct the tracking information for the node from a config."""
         return cls(
             timestamp_ns,
-            external_monitor=config.external_monitor.create(),
+            external_monitor=config.external_monitor.create(nickname),
             required=config.required,
         )
 
