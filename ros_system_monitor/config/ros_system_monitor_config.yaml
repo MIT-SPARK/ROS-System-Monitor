@@ -1,2 +1,4 @@
 ---
-nodes_to_track: {perception: {}, planning: {}}
+nodes_to_track:
+ perception: {}
+ planning: {}
