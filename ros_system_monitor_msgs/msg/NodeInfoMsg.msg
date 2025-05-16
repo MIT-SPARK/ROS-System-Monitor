@@ -5,7 +5,6 @@ int8 NO_HB = 4
 int8 STARTUP = 5
 
 string nickname
-string robot_id
 string node_name
 int8 status
 string notes

@@ -59,6 +59,7 @@ class SystemMonitor(Node):
             }
         )
 
+        robots = set([])
         for nickname, node in self.diagnostics.rows.items():
             if node.external_monitor is not None:
                 try:
@@ -68,9 +69,20 @@ class SystemMonitor(Node):
                         f"Failed to register external monitor '{nickname}': {e}"
                     )
 
+                parts = nickname.split("/")
+                if len(parts) == 2:
+                    robots.add(parts[0])
+
         self.subscriber = self.create_subscription(
             NodeInfoMsg, "~/node_diagnostic_collector", self._callback, 10
         )
+        for robot in robots:
+            self.subscriber = self.create_subscription(
+                NodeInfoMsg,
+                "~/node_diagnostic_collector/{robot}",
+                lambda x: self._callback(x, robot=robot),
+                10,
+            )
 
         self.timer = self.create_timer(self.config.timer_period_s, self._timer_callback)
 
@@ -101,10 +113,10 @@ class SystemMonitor(Node):
 
         print_table(self.console, table, clean=self.config.clean_prints)
 
-    def _callback(self, msg):
+    def _callback(self, msg, robot=None):
         status, note = value_to_status(msg.status)
         note = msg.notes if note is None else msg.notes + f" ({note})"
-        nn = f"{msg.robot_id}/{msg.nickname}" if len(msg.robot_id) > 0 else msg.nickname
+        nn = msg.nickname if robot is None else f"{msg.robot_id}/{msg.nickname}"
         self.update_node_info(nn, msg.node_name, status, note)
 
 
