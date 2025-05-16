@@ -17,10 +17,14 @@ class Status(Enum):
     STARTUP = NodeInfoMsg.STARTUP
 
 
-def split_nickname(nickname: str, default_id="N/A") -> Tuple(str, str):
+def split_nickname(nickname: str, default_id="N/A") -> Tuple[str, str]:
     """Get robot_id if set."""
     parts = nickname.split("/")
-    return parts[1], parts[0] if len(parts) == 2 else default_id, parts[0]
+    if len(parts) == 2:
+        return parts[1], parts[0]
+
+    return parts[0], default_id
+
 
 def str_to_status(status: str) -> Status:
     """Convert a string to a status value."""
@@ -122,6 +126,7 @@ class DiagnosticTable:
     def dump_table(self, max_no_heartbeat_s):
         table = Table(show_header=True, header_style="bold magenta")
         table.add_column("Nickname")
+        table.add_column("Robot ID")
         table.add_column("ROS Name")
         table.add_column("Status")
         table.add_column("Notes")
