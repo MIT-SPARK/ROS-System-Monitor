@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 import pathlib
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, Tuple
 import time
 from ros_system_monitor_msgs.msg import NodeInfoMsg
 import spark_config as sc
@@ -16,6 +16,11 @@ class Status(Enum):
     NO_HB = NodeInfoMsg.NO_HB
     STARTUP = NodeInfoMsg.STARTUP
 
+
+def split_nickname(nickname: str, default_id="N/A") -> Tuple(str, str):
+    """Get robot_id if set."""
+    parts = nickname.split("/")
+    return parts[1], parts[0] if len(parts) == 2 else default_id, parts[0]
 
 def str_to_status(status: str) -> Status:
     """Convert a string to a status value."""
@@ -82,18 +87,20 @@ class DiagnosticTable:
     @staticmethod
     def info_to_row(
         nickname: str,
+        robot_id: str,
         info: TrackedNodeInfo,
         curr_time_s: float,
         max_no_heartbeat_s: float = 10.0,
     ):
-        c1 = nickname
-        c2 = info.node_name
-        c3 = info.status
-        c4 = info.notes
-
         dt = curr_time_s - info.last_heartbeat / 1e9
-        c5 = rf"{dt:.3f} \[s]"
-
+        row = (
+            nickname,
+            robot_id,
+            info.node_name,
+            info.status,
+            info.notes,
+            rf"{dt:.3f} \[s]",
+        )
         if dt > max_no_heartbeat_s:
             info.status = Status.NO_HB
 
@@ -110,7 +117,6 @@ class DiagnosticTable:
         else:
             color = status_to_color[info.status]
 
-        row = (c1, c2, c3, c4, c5)
         return tuple(map(lambda x: f"[{color}]{x}[/{color}]", row))
 
     def dump_table(self, max_no_heartbeat_s):
@@ -124,7 +130,10 @@ class DiagnosticTable:
         t_now = time.time()
         keys = sorted(self.rows.keys())
         for k in keys:
-            table.add_row(*self.info_to_row(k, self.rows[k], t_now, max_no_heartbeat_s))
+            nn, rid = split_nickname(k)
+            table.add_row(
+                *self.info_to_row(nn, rid, self.rows[k], t_now, max_no_heartbeat_s)
+            )
 
         return table
 

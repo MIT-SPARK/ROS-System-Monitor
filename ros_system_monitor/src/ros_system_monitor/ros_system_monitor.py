@@ -104,7 +104,8 @@ class SystemMonitor(Node):
     def _callback(self, msg):
         status, note = value_to_status(msg.status)
         note = msg.notes if note is None else msg.notes + f" ({note})"
-        self.update_node_info(msg.nickname, msg.node_name, status, note)
+        nn = f"{msg.robot_id}/{msg.nickname}" if len(msg.robot_id) > 0 else msg.nickname
+        self.update_node_info(nn, msg.node_name, status, note)
 
 
 def main(args=None):
