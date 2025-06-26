@@ -3,7 +3,7 @@ from enum import Enum
 import pathlib
 from typing import Any, Optional, Dict, Tuple
 import time
-from ros_system_monitor_msgs.msg import NodeInfoMsg
+from ros_system_monitor_msgs.msg import NodeInfoMsg, ForwardedStatus
 import spark_config as sc
 from rich.table import Table
 import sys
@@ -82,6 +82,25 @@ class TrackedNodeInfo:
             external_monitor=config.external_monitor.create(nickname),
             required=config.required,
         )
+
+    @classmethod
+    def from_msg(cls, msg: ForwardedStatus):
+        return cls(
+            msg.last_heartbeat,
+            node_name=msg.node_name,
+            status=value_to_status(msg.status),
+            notes=msg.notes,
+            required=msg.required,
+        )
+
+    def to_msg(self):
+        msg = ForwardedStatus()
+        msg.last_heartbeat = self.last_heartbeat
+        msg.node_name = self.node_name
+        msg.status = self.status.value
+        msg.notes = self.notes
+        msg.required = self.required
+        return msg
 
 
 @dataclass

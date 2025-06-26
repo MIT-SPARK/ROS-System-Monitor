@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from rich.console import Console
 import time
 
-from ros_system_monitor_msgs.msg import NodeInfoMsg
+from ros_system_monitor_msgs.msg import NodeInfoMsg, StatusTable
 
 from ros_system_monitor.diagnostics import (
     DiagnosticTable,
@@ -42,47 +42,50 @@ class SystemMonitorConfig(Config):
         return Config.load(SystemMonitorConfig, path)
 
 
+def _get_nickname(info_name, robot_name):
+    return info_name if robot_name is None else f"{robot_name}/{info_name}"
+
+
 class SystemMonitor(Node):
-    def __init__(self, config_path):
+    def __init__(self, config_path, name=None, should_print=True):
         super().__init__("ros_system_monitor")
 
         self.console = Console()
         self.info_lock = threading.Lock()
         self._start_time_ns = self.get_clock().now().nanoseconds
+        self._should_print = should_print
 
         discover_plugins("rsm_")
         self.config = SystemMonitorConfig.load(config_path)
-        self.diagnostics = DiagnosticTable(
-            {
-                n: TrackedNodeInfo.from_config(c, n, self._start_time_ns)
-                for n, c in self.config.nodes_to_track.items()
-            }
-        )
+        self.name = name
 
-        robots = set([])
-        for nickname, node in self.diagnostics.rows.items():
-            if node.external_monitor is not None:
+        entries = {}
+        for nickname, info_config in self.config.nodes_to_track.items():
+            nickname = _get_nickname(nickname, self.name)
+            entry = TrackedNodeInfo.from_config(
+                info_config, nickname, self._start_time_ns
+            )
+            if entry.external_monitor is not None:
                 try:
-                    node.external_monitor.register_monitor(self)
+                    entry.external_monitor.register_monitor(self)
                 except Exception as e:
                     self.get_logger().error(
                         f"Failed to register external monitor '{nickname}': {e}"
                     )
 
-                parts = nickname.split("/")
-                if len(parts) == 2:
-                    robots.add(parts[0])
+            entries[nickname] = entry
 
-        self.subscriber = self.create_subscription(
-            NodeInfoMsg, "~/node_diagnostic_collector", self._callback, 10
+        self.diagnostics = DiagnosticTable(entries)
+        self.diagnostics_sub = self.create_subscription(
+            NodeInfoMsg, "~/node_diagnostic_collector", self._info_callback, 10
         )
-        for robot in robots:
-            self.subscriber = self.create_subscription(
-                NodeInfoMsg,
-                "~/node_diagnostic_collector/{robot}",
-                lambda x: self._callback(x, robot=robot),
-                10,
-            )
+        self.forward_sub = self.create_subscription(
+            StatusTable, "~/table_in", self._table_callback, 10
+        )
+
+        self.forward_pub = None
+        if self.name is not None:
+            self.forward_pub = self.create_publisher(StatusTable, "~/table_out", 10)
 
         self.timer = self.create_timer(self.config.timer_period_s, self._timer_callback)
 
@@ -110,22 +113,40 @@ class SystemMonitor(Node):
     def _timer_callback(self):
         with self.info_lock:
             table = self.diagnostics.dump_table(self.config.max_heartbeat_interval_s)
+            if self.forward_pub is not None:
+                self._forward_table()
 
-        print_table(self.console, table, clean=self.config.clean_prints)
+        if self._should_print:
+            print_table(self.console, table, clean=self.config.clean_prints)
 
-    def _callback(self, msg, robot=None):
+    def _info_callback(self, msg):
         status, note = value_to_status(msg.status)
         note = msg.notes if note is None else msg.notes + f" ({note})"
-        nn = msg.nickname if robot is None else f"{msg.robot_id}/{msg.nickname}"
+        nn = _get_nickname(msg.nickname, self.name)
         self.update_node_info(nn, msg.node_name, status, note)
+
+    def _forward_table(self):
+        msg = StatusTable()
+        msg.monitor_name = self.name
+        for _, row in self.diagnostics.rows.items():
+            msg.status.append(row.to_msg())
+
+        self.forward_pub.publish(msg)
+
+    def _table_callback(self, msg):
+        with self.info_lock:
+            for status in msg.status:
+                self.diagnostics[status.node_name] = TrackedNodeInfo.from_msg(msg)
 
 
 def main(args=None):
     rclpy.init(args=args)
     parser = argparse.ArgumentParser()
     parser.add_argument("--param_file", type=str)
+    parser.add_argument("--name", type=str, default=None)
+    parser.add_argument("--print", action=argparse.BooleanOptionalAction, default=True)
     args, _ = parser.parse_known_args()
-    node = SystemMonitor(args.param_file)
+    node = SystemMonitor(args.param_file, name=args.name, should_print=args.print)
     rclpy.spin(node)
 
 
