@@ -18,7 +18,6 @@ def get_share_info(top_level, pattern, dest=None):
 
 launch_files = get_share_info("launch", "*.launch.yaml")
 config_files = get_share_info("config", "*.yaml")
-config_files_csv = get_share_info("config", "*.csv")
 
 
 data_files = (
@@ -28,7 +27,6 @@ data_files = (
     ]
     + launch_files
     + config_files
-    + config_files_csv
 )
 
 
@@ -48,7 +46,7 @@ setup(
     entry_points={
         "console_scripts": [
             "ros_system_monitor = ros_system_monitor.ros_system_monitor:main",
-            "example_monitored_node = ros_system_monitor.example_monitored_node:main",
+            "example_monitored_node = ros_system_monitor.examples.monitored_node:main",
         ],
     },
 )

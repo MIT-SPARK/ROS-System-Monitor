@@ -2,8 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 import pathlib
 from typing import Any, Optional, Dict, Tuple
-import time
-from ros_system_monitor_msgs.msg import NodeInfoMsg, ForwardedStatus
+from ros_system_monitor_msgs.msg import NodeInfoMsg
 import spark_config as sc
 from rich.table import Table
 import sys
@@ -15,6 +14,15 @@ class Status(Enum):
     ERROR = NodeInfoMsg.ERROR
     NO_HB = NodeInfoMsg.NO_HB
     STARTUP = NodeInfoMsg.STARTUP
+
+
+STATUS_TO_COLOR = {
+    Status.NOMINAL: "green",
+    Status.WARNING: "yellow",
+    Status.ERROR: "red",
+    Status.NO_HB: "yellow",
+    Status.STARTUP: "yellow",
+}
 
 
 def split_nickname(nickname: str, default_id="N/A") -> Tuple[str, str]:
@@ -84,17 +92,28 @@ class TrackedNodeInfo:
         )
 
     @classmethod
-    def from_msg(cls, msg: ForwardedStatus):
+    def from_msg(cls, msg: NodeInfoMsg):
+        status, note = value_to_status(msg.status)
+        note = msg.notes if note is None else msg.notes + f" ({note})"
         return cls(
             msg.last_heartbeat,
             node_name=msg.node_name,
-            status=value_to_status(msg.status),
-            notes=msg.notes,
+            status=status,
+            notes=note,
             required=msg.required,
         )
 
+    def update(self, other, time_ns):
+        self.status = other.status
+        self.notes = other.notes
+        self.node_name = other.node_name
+        self.last_heartbeat = time_ns
+
+    def seconds_since_heartbeat(self, curr_time_s: float):
+        return curr_time_s - (self.last_heartbeat * 1.0e-9)
+
     def to_msg(self):
-        msg = ForwardedStatus()
+        msg = NodeInfoMsg()
         msg.last_heartbeat = self.last_heartbeat
         msg.node_name = self.node_name
         msg.status = self.status.value
@@ -103,46 +122,22 @@ class TrackedNodeInfo:
         return msg
 
 
+def _color_entry(entry, color):
+    return f"[{color}]{entry}[/{color}]"
+
+
 @dataclass
 class DiagnosticTable:
     rows: Dict[str, TrackedNodeInfo]
+    max_no_heartbeat_s: float
 
-    @staticmethod
-    def info_to_row(
-        nickname: str,
-        robot_id: str,
-        info: TrackedNodeInfo,
-        curr_time_s: float,
-        max_no_heartbeat_s: float = 10.0,
-    ):
-        dt = curr_time_s - info.last_heartbeat / 1e9
-        row = (
-            nickname,
-            robot_id,
-            info.node_name,
-            info.status,
-            info.notes,
-            rf"{dt:.3f} \[s]",
-        )
-        if dt > max_no_heartbeat_s:
-            info.status = Status.NO_HB
+    def tick(self, curr_time_s: float):
+        """Update the table."""
+        for _, info in self.rows.items():
+            if info.seconds_since_heartbeat(curr_time_s) > self.max_no_heartbeat_s:
+                info.status = Status.NO_HB
 
-        status_to_color = {
-            Status.NOMINAL: "green",
-            Status.WARNING: "yellow",
-            Status.ERROR: "red",
-            Status.NO_HB: "yellow",
-            Status.STARTUP: "yellow",
-        }
-
-        if info.status == Status.NO_HB and info.required:
-            color = "red"
-        else:
-            color = status_to_color[info.status]
-
-        return tuple(map(lambda x: f"[{color}]{x}[/{color}]", row))
-
-    def dump_table(self, max_no_heartbeat_s):
+    def dump_table(self, curr_time_s):
         table = Table(show_header=True, header_style="bold magenta")
         table.add_column("Nickname")
         table.add_column("Robot ID")
@@ -151,13 +146,25 @@ class DiagnosticTable:
         table.add_column("Notes")
         table.add_column("Time Since Heartbeat")
 
-        t_now = time.time()
         keys = sorted(self.rows.keys())
         for k in keys:
             nn, rid = split_nickname(k)
-            table.add_row(
-                *self.info_to_row(nn, rid, self.rows[k], t_now, max_no_heartbeat_s)
+            info = self.rows[k]
+            row = (
+                nn,
+                rid,
+                info.node_name,
+                info.status,
+                info.notes,
+                rf"{info.seconds_since_heartbeat(curr_time_s):.3f} \[s]",
             )
+
+            color = STATUS_TO_COLOR.get(info.status, "red")
+            if info.status == Status.NO_HB and info.required:
+                color = "red"
+
+            row = tuple(_color_entry(x, color) for x in row)
+            table.add_row(*row)
 
         return table
 

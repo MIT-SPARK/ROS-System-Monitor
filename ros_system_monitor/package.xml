@@ -10,6 +10,7 @@
   <depend>ros_system_monitor_msgs</depend>
   <depend>python3-ruamel.yaml</depend>
   <depend>python3-rich</depend>
+  <depend>spark_config</depend>
   <test_depend>python3-pytest</test_depend>
 
   <export>

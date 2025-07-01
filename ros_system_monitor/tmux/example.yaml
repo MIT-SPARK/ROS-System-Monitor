@@ -1,13 +1,13 @@
+---
 session_name: rsm_example
 options:
-    default-command: /bin/zsh
+  default-command: /bin/zsh
+environment:
+  WORKSPACE: ${HOME}/colcon_ws/install
 windows:
-    - window_name: example_monitor
-      shell_command_before: source ${DCIST_WS}/install/setup.zsh
-      layout: tiled
-      panes:
-        - ros2 launch ros_system_monitor ros_system_monitor.launch.yaml launch_nominal_node:=true
-        - ros2 launch ros_system_monitor ros_system_monitor.launch.yaml launch_warning_node:=true
-        - ros2 run ros_system_monitor ros_system_monitor
-            --param_file `ros2 pkg prefix ros_system_monitor`/share/ros_system_monitor/config/ros_system_monitor_config.yaml
-            --ros-args -r /ros_system_monitor/example1_node_topic:=/external_monitored_node/topic
+  - window_name: example_monitor
+    shell_command_before: source ${WORKSPACE}/setup.zsh
+    layout: tiled
+    panes:
+      - ros2 launch ros_system_monitor example.launch.yaml
+      - ros2 run ros_system_monitor ros_system_monitor --param_file `ros2 pkg prefix ros_system_monitor`/share/ros_system_monitor/config/example_monitor.yaml
