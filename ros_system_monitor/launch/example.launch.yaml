@@ -32,7 +32,7 @@ launch:
           name: ros_system_monitor
           remap:
             - {from: ~/table_out, to: /ros_system_monitor/table_in}
-          args: --no-print --name robot1 --param_file $(find-pkg-share ros_system_monitor)/config/example_monitor.yaml
+          args: --no-print --name robot1 --param_file $(find-pkg-share ros_system_monitor)/config/example_monitor.yaml --max_no_heartbeat_s 5.0
   - group:
       - push_ros_namespace: {namespace: robot2}
       - node:
@@ -49,4 +49,4 @@ launch:
           name: ros_system_monitor
           remap:
             - {from: ~/table_out, to: /ros_system_monitor/table_in}
-          args: --no-print --name robot2 --param_file $(find-pkg-share ros_system_monitor)/config/example_monitor.yaml
+          args: --no-print --name robot2 --param_file $(find-pkg-share ros_system_monitor)/config/example_monitor.yaml --max_no_heartbeat_s 20.0

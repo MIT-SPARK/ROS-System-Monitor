@@ -1,2 +1,3 @@
 string monitor_name
+float64 max_no_heartbeat_s
 ros_system_monitor_msgs/NodeInfoMsg[] status

@@ -27,12 +27,12 @@ class SystemMonitorConfig(Config):
 
     Attributes:
         nodes_to_track: Declaration of the nodes that the system monitor should display
-        max_heartbeat_interval_s: Max time without receiving a heartbeat from a node
+        max_no_heartbeat_s: Max time without receiving a heartbeat from a node
         timer_period_s: Refresh rate of the system monitor
     """
 
     nodes_to_track: Dict[str, TrackedNodeConfig] = field(default_factory=dict)
-    max_heartbeat_interval_s: float = 10.0
+    max_no_heartbeat_s: float = 10.0
     timer_period_s: float = 0.5
     clean_prints: bool = True
 
@@ -46,7 +46,9 @@ def _get_nickname(info_name, robot_name):
 
 
 class SystemMonitor(Node):
-    def __init__(self, config_path, name=None, should_print=True):
+    def __init__(
+        self, config_path, name=None, should_print=True, max_no_heartbeat_s=None
+    ):
         super().__init__("ros_system_monitor")
 
         self.console = Console()
@@ -56,22 +58,20 @@ class SystemMonitor(Node):
 
         discover_plugins("rsm_")
         self.config = SystemMonitorConfig.load(config_path)
+        self.config.max_no_heartbeat_s = (
+            max_no_heartbeat_s or self.config.max_no_heartbeat_s
+        )
         self.name = name
 
-        entries = {}
-        for nickname, info_config in self.config.nodes_to_track.items():
+        self.diagnostics = DiagnosticTable(self.config.max_no_heartbeat_s)
+        for nickname, config in self.config.nodes_to_track.items():
             nickname = _get_nickname(nickname, self.name)
-            entry = TrackedNodeInfo.from_config(
-                info_config, nickname, self._start_time_ns
-            )
+            entry = TrackedNodeInfo.from_config(config, nickname, self._start_time_ns)
+            self.diagnostics.add(entry)
             if entry.external_monitor is not None:
                 entry.external_monitor.register_monitor(self)
 
-            entries[nickname] = entry
-
-        self.diagnostics = DiagnosticTable(
-            entries, self.config.max_heartbeat_interval_s
-        )
+        self.forwarded_diagnostics = {}
         self.diagnostics_sub = self.create_subscription(
             NodeInfoMsg, "~/node_diagnostic_collector", self._info_callback, 10
         )
@@ -90,49 +90,52 @@ class SystemMonitor(Node):
         if tracked_info.external_monitor is not None:
             tracked_info.register_callbacks(self)
 
-        self.diagnostics.rows[nickname] = tracked_info
+        self.diagnostics.add(tracked_info)
 
-    def update_node_info(self, nickname, info: TrackedNodeInfo):
-        time_ns = int(time.time() * 1e9)
+    def update_node_info(self, info: TrackedNodeInfo):
         with self.info_lock:
-            if nickname not in self.diagnostics.rows:
-                info_str = f"'{nickname}' ('{info.node_name}')"
-                self.get_logger().error(f"Got untracked node status: {info_str}")
-                return
-
-            self.diagnostics.rows[nickname].update(info, time_ns)
+            self.diagnostics.update(info, int(time.time() * 1e9))
 
     def _timer_callback(self):
         t_now = time.time()
         with self.info_lock:
             self.diagnostics.tick(t_now)
-            table = self.diagnostics.dump_table(t_now)
-            if self.forward_pub is not None:
-                self._forward_table()
+            rows = self.diagnostics.dump()
+            for _, table in self.forwarded_diagnostics.items():
+                table.tick(t_now)
+                rows += table.dump()
+
+        if self.forward_pub is not None:
+            self._forward_table(rows)
 
         if self._should_print:
-            print_table(self.console, table, clean=self.config.clean_prints)
+            print_table(self.console, rows, t_now, clean=self.config.clean_prints)
 
     def _info_callback(self, msg):
+        # TODO(nathan) this is still clunky
         nn = _get_nickname(msg.nickname, self.name)
-        self.update_node_info(nn, TrackedNodeInfo.from_msg(msg))
+        info = TrackedNodeInfo.from_msg(msg)
+        info.nickname = nn
+        self.update_node_info(info)
 
-    def _forward_table(self):
+    def _forward_table(self, rows):
         msg = StatusTable()
         msg.monitor_name = self.name
-        for nn, row in self.diagnostics.rows.items():
-            row_msg = row.to_msg()
-            row_msg.nickname = nn
-            msg.status.append(row_msg)
+        msg.max_no_heartbeat_s = self.config.max_no_heartbeat_s
+        for row in rows:
+            msg.status.append(row.to_msg())
 
         self.forward_pub.publish(msg)
 
     def _table_callback(self, msg):
         with self.info_lock:
-            for status in msg.status:
-                self.diagnostics.rows[status.nickname] = TrackedNodeInfo.from_msg(
-                    status
-                )
+            table_name = msg.monitor_name
+            if table_name not in self.forwarded_diagnostics:
+                self.forwarded_diagnostics[table_name] = DiagnosticTable.from_msg(msg)
+
+            for info_msg in msg.status:
+                info = TrackedNodeInfo.from_msg(info_msg)
+                self.forwarded_diagnostics[table_name].update(info)
 
 
 def main(args=None):
@@ -141,8 +144,14 @@ def main(args=None):
     parser.add_argument("--param_file", type=str)
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--print", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--max_no_heartbeat_s", type=float, default=None)
     args, _ = parser.parse_known_args()
-    node = SystemMonitor(args.param_file, name=args.name, should_print=args.print)
+    node = SystemMonitor(
+        args.param_file,
+        name=args.name,
+        should_print=args.print,
+        max_no_heartbeat_s=args.max_no_heartbeat_s,
+    )
     rclpy.spin(node)
 
 
