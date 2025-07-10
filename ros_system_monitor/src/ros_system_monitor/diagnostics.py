@@ -5,7 +5,6 @@ from typing import Any, Optional, Tuple
 from ros_system_monitor_msgs.msg import NodeInfoMsg
 import spark_config as sc
 from rich.table import Table
-import copy
 import sys
 
 
@@ -131,6 +130,16 @@ class TrackedNodeInfo:
         msg.required = self.required
         return msg
 
+    def dump(self):
+        return TrackedNodeInfo(
+            nickname=self.nickname,
+            last_heartbeat=self.last_heartbeat,
+            node_name=self.node_name,
+            status=self.status,
+            notes=self.notes,
+            required=self.required,
+        )
+
 
 def _color_entry(entry, color):
     return f"[{color}]{entry}[/{color}]"
@@ -159,7 +168,7 @@ class DiagnosticTable:
                 info.status = Status.NO_HB
 
     def dump(self):
-        return [copy.deepcopy(x) for _, x in self.rows.items()]
+        return [x.dump() for _, x in self.rows.items()]
 
     @classmethod
     def from_msg(cls, msg):

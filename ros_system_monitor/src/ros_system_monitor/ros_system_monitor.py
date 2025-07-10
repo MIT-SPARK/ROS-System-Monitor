@@ -12,10 +12,11 @@ from ros_system_monitor.diagnostics import (
     TrackedNodeInfo,
     print_table,
 )
+import pathlib
 import threading
 
 from spark_config import Config, discover_plugins
-from typing import Dict
+from typing import Dict, Optional
 
 import argparse
 
@@ -37,7 +38,14 @@ class SystemMonitorConfig(Config):
     clean_prints: bool = True
 
     @classmethod
-    def load(cls, path: str):
+    def load(cls, path: Optional[str]):
+        if path is None:
+            return cls()
+
+        path = pathlib.Path(path).expanduser().absolute()
+        if not path.exists():
+            return cls()
+
         return Config.load(SystemMonitorConfig, path)
 
 
