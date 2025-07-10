@@ -66,6 +66,7 @@ class SystemMonitor(Node):
 
         discover_plugins("rsm_")
         self.config = SystemMonitorConfig.load(config_path)
+        self.get_logger().info(f"config: {self.config}")
         self.config.max_no_heartbeat_s = (
             max_no_heartbeat_s or self.config.max_no_heartbeat_s
         )
@@ -102,7 +103,9 @@ class SystemMonitor(Node):
 
     def update_node_info(self, info: TrackedNodeInfo):
         with self.info_lock:
-            self.diagnostics.update(info, int(time.time() * 1e9))
+            if not self.diagnostics.update(info, int(time.time() * 1e9)):
+                info_str = f"'{info.nickname}' ('{info.node_name}')"
+                self.get_logger().error(f"Got untracked node status: {info_str}")
 
     def _timer_callback(self):
         t_now = time.time()

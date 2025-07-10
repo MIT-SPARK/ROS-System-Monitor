@@ -155,11 +155,10 @@ class DiagnosticTable:
 
     def update(self, info: TrackedNodeInfo, time_ns: Optional[int] = None):
         if info.nickname not in self.rows:
-            info_str = f"'{info.nickname}' ('{info.node_name}')"
-            self.get_logger().error(f"Got untracked node status: {info_str}")
-            return
+            return False
 
         self.rows[info.nickname].update(info, time_ns)
+        return True
 
     def tick(self, curr_time_s: float):
         """Update the table."""
