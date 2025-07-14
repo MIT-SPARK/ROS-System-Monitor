@@ -1,0 +1,52 @@
+---
+launch:
+  - node:
+      pkg: ros_system_monitor
+      exec: example_monitored_node
+      name: nominal_monitored_node
+      param:
+        - from: $(find-pkg-share ros_system_monitor)/config/nominal_monitored_node.yaml
+      remap:
+        - {from: ~/node_status, to: /ros_system_monitor/node_diagnostic_collector}
+  - node:
+      pkg: ros_system_monitor
+      exec: example_monitored_node
+      name: warning_monitored_node
+      param:
+        - from: $(find-pkg-share ros_system_monitor)/config/warning_monitored_node.yaml
+      remap:
+        - {from: ~/node_status, to: /ros_system_monitor/node_diagnostic_collector}
+  - group:
+      - push_ros_namespace: {namespace: robot1}
+      - node:
+          pkg: ros_system_monitor
+          exec: example_monitored_node
+          name: nominal_monitored_node
+          param:
+            - from: $(find-pkg-share ros_system_monitor)/config/nominal_monitored_node.yaml
+          remap:
+            - {from: ~/node_status, to: ros_system_monitor/node_diagnostic_collector}
+      - node:
+          pkg: ros_system_monitor
+          exec: ros_system_monitor
+          name: ros_system_monitor
+          remap:
+            - {from: ~/table_out, to: /ros_system_monitor/table_in}
+          args: --no-print --name robot1 --param_file $(find-pkg-share ros_system_monitor)/config/example_monitor.yaml --max_no_heartbeat_s 5.0
+  - group:
+      - push_ros_namespace: {namespace: robot2}
+      - node:
+          pkg: ros_system_monitor
+          exec: example_monitored_node
+          name: nominal_monitored_node
+          param:
+            - from: $(find-pkg-share ros_system_monitor)/config/warning_monitored_node.yaml
+          remap:
+            - {from: ~/node_status, to: ros_system_monitor/node_diagnostic_collector}
+      - node:
+          pkg: ros_system_monitor
+          exec: ros_system_monitor
+          name: ros_system_monitor
+          remap:
+            - {from: ~/table_out, to: /ros_system_monitor/table_in}
+          args: --no-print --name robot2 --param_file $(find-pkg-share ros_system_monitor)/config/example_monitor.yaml --max_no_heartbeat_s 20.0
