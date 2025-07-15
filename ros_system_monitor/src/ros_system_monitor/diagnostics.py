@@ -89,7 +89,6 @@ class TrackedNodeInfo:
         return cls(
             nickname,
             timestamp_ns,
-            external_monitor=config.external_monitor.create(nickname),
             required=config.required,
         )
 

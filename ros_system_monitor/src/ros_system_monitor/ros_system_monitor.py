@@ -74,11 +74,18 @@ class SystemMonitor(Node):
 
         self.diagnostics = DiagnosticTable(self.config.max_no_heartbeat_s)
         for nickname, config in self.config.nodes_to_track.items():
-            nickname = _get_nickname(nickname, self.name)
-            entry = TrackedNodeInfo.from_config(config, nickname, self._start_time_ns)
-            self.diagnostics.add(entry)
+            resolved_nickname = _get_nickname(nickname, self.name)
+
+            entry = TrackedNodeInfo.from_config(
+                config, resolved_nickname, self._start_time_ns
+            )
+            entry.external_monitor = config.external_monitor.create(
+                resolved_nickname, self.name
+            )
             if entry.external_monitor is not None:
                 entry.external_monitor.register_monitor(self)
+
+            self.diagnostics.add(entry)
 
         self.forwarded_diagnostics = {}
         self.diagnostics_sub = self.create_subscription(
