@@ -16,7 +16,7 @@ import pathlib
 import threading
 
 from spark_config import Config, discover_plugins
-from typing import Dict, Optional
+from typing import Dict
 
 import argparse
 
@@ -37,35 +37,22 @@ class SystemMonitorConfig(Config):
     timer_period_s: float = 0.5
     clean_prints: bool = True
 
-    @classmethod
-    def load(cls, path: Optional[str]):
-        if path is None:
-            return cls()
-
-        path = pathlib.Path(path).expanduser().absolute()
-        if not path.exists():
-            return cls()
-
-        return Config.load(SystemMonitorConfig, path)
-
 
 def _get_nickname(info_name, robot_name):
     return info_name if robot_name is None else f"{robot_name}/{info_name}"
 
 
 class SystemMonitor(Node):
-    def __init__(
-        self, config_path, name=None, should_print=True, max_no_heartbeat_s=None
-    ):
+    def __init__(self, config, name=None, should_print=True, max_no_heartbeat_s=None):
         super().__init__("ros_system_monitor")
 
+        self.config = config
         self.console = Console()
         self.info_lock = threading.Lock()
         self._start_time_ns = self.get_clock().now().nanoseconds
         self._should_print = should_print
 
         discover_plugins("rsm_")
-        self.config = SystemMonitorConfig.load(config_path)
         self.get_logger().info(f"config: {self.config}")
         self.config.max_no_heartbeat_s = (
             max_no_heartbeat_s or self.config.max_no_heartbeat_s
@@ -155,13 +142,23 @@ class SystemMonitor(Node):
 def main(args=None):
     rclpy.init(args=args)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--param_file", type=str)
+    parser.add_argument("--param_file", type=str, default=None)
+    parser.add_argument("--params", type=str, default=None)
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--print", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--max_no_heartbeat_s", type=float, default=None)
     args, _ = parser.parse_known_args()
+
+    config = SystemMonitorConfig()
+    if args.param_file is not None:
+        path = pathlib.Path(args.param_file).expanduser().absolute()
+        if path.exists():
+            config = Config.load(SystemMonitorConfig, path)
+    elif args.params is not None:
+        config = Config.loads(SystemMonitorConfig, args.params)
+
     node = SystemMonitor(
-        args.param_file,
+        config,
         name=args.name,
         should_print=args.print,
         max_no_heartbeat_s=args.max_no_heartbeat_s,
