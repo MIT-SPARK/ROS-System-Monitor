@@ -57,11 +57,11 @@ class JsonMonitor:
             return
 
         if "status" not in contents:
-            self._register_error(f"status missing: '{contents}'")
+            self._register_error(f"status missing (parsed='{contents}')!")
             return
 
         if "nickname" not in contents:
-            self._register_error(f"nickname missing: '{contents}'")
+            self._register_error(f"nickname missing (parsed='{contents}')!")
             return
 
         curr_name = contents["nickname"]
